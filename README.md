@@ -1,0 +1,1 @@
+# Smart-News-Authenticity-Portal
