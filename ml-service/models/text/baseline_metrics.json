@@ -1,0 +1,104 @@
+{
+  "validation": {
+    "model_type": "TF-IDF + Logistic Regression (Baseline)",
+    "classes": [
+      "fake",
+      "real",
+      "suspicious"
+    ],
+    "accuracy": 0.8524,
+    "macro_f1": 0.8022,
+    "weighted_f1": 0.8601,
+    "macro_precision": 0.7909,
+    "macro_recall": 0.8288,
+    "log_loss": 0.3505,
+    "confusion_matrix": [
+      [
+        1235,
+        53,
+        124
+      ],
+      [
+        38,
+        1033,
+        135
+      ],
+      [
+        55,
+        37,
+        284
+      ]
+    ],
+    "per_class": {
+      "fake": {
+        "precision": 0.93,
+        "recall": 0.8746,
+        "f1": 0.9015,
+        "support": 1412.0
+      },
+      "real": {
+        "precision": 0.9199,
+        "recall": 0.8566,
+        "f1": 0.8871,
+        "support": 1206.0
+      },
+      "suspicious": {
+        "precision": 0.523,
+        "recall": 0.7553,
+        "f1": 0.6181,
+        "support": 376.0
+      }
+    }
+  },
+  "test": {
+    "model_type": "TF-IDF + Logistic Regression (Baseline)",
+    "classes": [
+      "fake",
+      "real",
+      "suspicious"
+    ],
+    "accuracy": 0.8487,
+    "macro_f1": 0.7972,
+    "weighted_f1": 0.8564,
+    "macro_precision": 0.7865,
+    "macro_recall": 0.8227,
+    "log_loss": 0.3572,
+    "confusion_matrix": [
+      [
+        1235,
+        46,
+        131
+      ],
+      [
+        49,
+        1027,
+        130
+      ],
+      [
+        50,
+        47,
+        279
+      ]
+    ],
+    "per_class": {
+      "fake": {
+        "precision": 0.9258,
+        "recall": 0.8746,
+        "f1": 0.8995,
+        "support": 1412.0
+      },
+      "real": {
+        "precision": 0.917,
+        "recall": 0.8516,
+        "f1": 0.8831,
+        "support": 1206.0
+      },
+      "suspicious": {
+        "precision": 0.5167,
+        "recall": 0.742,
+        "f1": 0.6092,
+        "support": 376.0
+      }
+    }
+  }
+}

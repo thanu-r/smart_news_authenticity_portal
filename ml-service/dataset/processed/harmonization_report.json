@@ -1,0 +1,34 @@
+{
+  "total_records": 19956,
+  "train_records": 13968,
+  "val_records": 2994,
+  "test_records": 2994,
+  "class_distribution": {
+    "fake": 9410,
+    "real": 8041,
+    "suspicious": 2505
+  },
+  "origin_distribution": {
+    "ISOT": 11959,
+    "LIAR2": 7997
+  },
+  "train_distribution": {
+    "fake": 6586,
+    "real": 5629,
+    "suspicious": 1753
+  },
+  "val_distribution": {
+    "fake": 1412,
+    "real": 1206,
+    "suspicious": 376
+  },
+  "test_distribution": {
+    "fake": 1412,
+    "real": 1206,
+    "suspicious": 376
+  },
+  "mapping_strategy": {
+    "ISOT": "Fake.csv -> fake, True.csv -> real",
+    "LIAR2": "0,1 -> fake; 2,3 -> suspicious; 4,5 -> real"
+  }
+}

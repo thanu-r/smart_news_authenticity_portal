@@ -1,0 +1,10 @@
+{
+  "temperature": 1.095,
+  "labels": [
+    "fake",
+    "real",
+    "suspicious"
+  ],
+  "test_accuracy": 0.7711,
+  "macro_f1": 0.7726
+}
