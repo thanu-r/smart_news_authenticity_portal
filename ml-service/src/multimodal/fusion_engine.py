@@ -188,6 +188,7 @@ class MultimodalDecisionFusionEngine:
 
             explanation = {
                 "summary": image_result["explanation"],
+                "executive_summary": image_result["explanation"],
                 "detailed_reasons": anomalies if anomalies else ["Compression levels, frequency decay, and noise variance patterns analyzed."],
                 "driver_factors": drivers
             }

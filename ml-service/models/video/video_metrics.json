@@ -2,41 +2,41 @@
   "pipeline": "OpenCV Frame Sampling + ELA Residual + Temporal Flicker Aggregation",
   "test_sequences": 10,
   "accuracy": 0.7,
-  "macro_f1": 0.6703,
+  "macro_f1": 0.697,
   "confusion_matrix": [
+    [
+      4,
+      1
+    ],
     [
       2,
       3
-    ],
-    [
-      0,
-      5
     ]
   ],
   "classification_report": {
     "fake": {
-      "precision": 1.0,
-      "recall": 0.4,
-      "f1-score": 0.5714285714285714,
+      "precision": 0.6666666666666666,
+      "recall": 0.8,
+      "f1-score": 0.7272727272727273,
       "support": 5.0
     },
     "real": {
-      "precision": 0.625,
-      "recall": 1.0,
-      "f1-score": 0.7692307692307693,
+      "precision": 0.75,
+      "recall": 0.6,
+      "f1-score": 0.6666666666666666,
       "support": 5.0
     },
     "accuracy": 0.7,
     "macro avg": {
-      "precision": 0.8125,
+      "precision": 0.7083333333333333,
       "recall": 0.7,
-      "f1-score": 0.6703296703296704,
+      "f1-score": 0.696969696969697,
       "support": 10.0
     },
     "weighted avg": {
-      "precision": 0.8125,
+      "precision": 0.7083333333333333,
       "recall": 0.7,
-      "f1-score": 0.6703296703296703,
+      "f1-score": 0.696969696969697,
       "support": 10.0
     }
   },
@@ -44,82 +44,82 @@
     {
       "video_id": "0094b77fc378929f95b0bdef1801c3175b854f7c2271b570981e06fada07d35b_real.avi",
       "true_label": "real",
-      "predicted_label": "REAL",
-      "confidence": 0.4336,
-      "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0884
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.73885,
+      "suspicious_timestamps_count": 1,
+      "flicker_index": 0.0244
     },
     {
       "video_id": "0094b77fc378929f95b0bdef1801c3175b854f7c2271b570981e06fada07d35b_fake.avi",
       "true_label": "fake",
-      "predicted_label": "FAKE",
-      "confidence": 0.5451,
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.8999999999999999,
       "suspicious_timestamps_count": 1,
-      "flicker_index": 0.1098
+      "flicker_index": 0.0244
     },
     {
       "video_id": "02465fa6449611ed80e01dd7dbfe0eb73546f00306ad1eee855016565ca1492c_real.avi",
       "true_label": "real",
       "predicted_label": "REAL",
-      "confidence": 0.4051,
+      "confidence": 0.5617,
       "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0554
+      "flicker_index": 0.0155
     },
     {
       "video_id": "02465fa6449611ed80e01dd7dbfe0eb73546f00306ad1eee855016565ca1492c_fake.avi",
       "true_label": "fake",
-      "predicted_label": "FAKE",
-      "confidence": 0.5598,
-      "suspicious_timestamps_count": 1,
-      "flicker_index": 0.0644
+      "predicted_label": "REAL",
+      "confidence": 0.5764,
+      "suspicious_timestamps_count": 0,
+      "flicker_index": 0.0155
     },
     {
       "video_id": "0b891fd2144cd4455eed64251bc211b9d92fc8b06ea747ee3ea4593515b860eb_real.avi",
       "true_label": "real",
-      "predicted_label": "REAL",
-      "confidence": 0.7829,
-      "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0709
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.72,
+      "suspicious_timestamps_count": 1,
+      "flicker_index": 0.0146
     },
     {
       "video_id": "0b891fd2144cd4455eed64251bc211b9d92fc8b06ea747ee3ea4593515b860eb_fake.avi",
       "true_label": "fake",
-      "predicted_label": "REAL",
-      "confidence": 0.7829,
-      "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0968
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.8999999999999999,
+      "suspicious_timestamps_count": 1,
+      "flicker_index": 0.0146
     },
     {
       "video_id": "0bf850c7b0e85177233b2fe6c33a0dafcb2a23aa7862bf21a9f32a720980f28f_real.avi",
       "true_label": "real",
       "predicted_label": "REAL",
-      "confidence": 0.6635,
+      "confidence": 0.4789,
       "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0751
+      "flicker_index": 0.0126
     },
     {
       "video_id": "0bf850c7b0e85177233b2fe6c33a0dafcb2a23aa7862bf21a9f32a720980f28f_fake.avi",
       "true_label": "fake",
-      "predicted_label": "REAL",
-      "confidence": 0.6546,
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.8999999999999999,
       "suspicious_timestamps_count": 0,
-      "flicker_index": 0.1127
+      "flicker_index": 0.0126
     },
     {
       "video_id": "13333675d576f6fc14b2b57d00fe1dfb2e70bae98e7d0b99e3338bfbbf551ebe_real.avi",
       "true_label": "real",
       "predicted_label": "REAL",
-      "confidence": 0.4258,
+      "confidence": 0.5856,
       "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0667
+      "flicker_index": 0.0197
     },
     {
       "video_id": "13333675d576f6fc14b2b57d00fe1dfb2e70bae98e7d0b99e3338bfbbf551ebe_fake.avi",
       "true_label": "fake",
-      "predicted_label": "REAL",
-      "confidence": 0.4219,
+      "predicted_label": "DEEPFAKE",
+      "confidence": 0.8999999999999999,
       "suspicious_timestamps_count": 0,
-      "flicker_index": 0.0797
+      "flicker_index": 0.0197
     }
   ]
 }

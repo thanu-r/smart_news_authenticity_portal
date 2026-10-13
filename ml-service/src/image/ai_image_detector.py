@@ -1,6 +1,6 @@
 import io
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 import numpy as np
 import cv2
 from PIL import Image, ExifTags
@@ -8,31 +8,48 @@ import logging
 
 logger = logging.getLogger("smartnews.ai_image_detector")
 
+KNOWN_AI_SIGNATURES = [
+    "stablediffusion", "stable diffusion", "midjourney", "dall-e", "dalle",
+    "chatgpt", "openai", "comfyui", "novelai", "civitai", "dreamstudio",
+    "adobe firefly", "firefly", "c2pa", "google imagen", "imagen",
+    "bing image creator", "copilot", "ideogram", "leonardo.ai", "flux",
+    "negative prompt", "steps: ", "sampler: ", "cfg scale:", "model: ",
+    "guidance_scale", "seed:", "diffusion", "karras", "euler"
+]
+
 class AIImageDetector:
     """
     Forensic detector for AI-generated and synthetically synthesized images
-    (e.g., Latent Diffusion, Stable Diffusion, Midjourney, DALL-E, Flux, GANs).
+    (e.g., Latent Diffusion, Stable Diffusion, Midjourney, DALL-E, ChatGPT, Flux, GANs).
     
     Examines:
       1. 2D Fourier (FFT) Azimuthal Spectral Decay (power law P(f) ~ 1/f^alpha)
-      2. Periodic grid artifacts in the frequency domain from deconvolution/upsampling
+      2. Periodic grid / checkerboard artifacts from neural upsampling deconvolution
       3. Chromatic cross-channel gradient covariance (absence of physical Bayer CFA demosaicing)
-      4. High-pass noise residual statistical kurtosis & skewness
-      5. Generation provenance & synthetic tool metadata markers
+      4. Spatial texture smoothness & high-pass noise moments
+      5. Generation provenance & synthetic tool metadata markers across EXIF, XMP, and PNG chunks
     """
 
     def __init__(self):
         pass
 
+    def _prepare_rgb_image(self, img: Image.Image) -> Image.Image:
+        """Handle transparent formats (WEBP, PNG with alpha) cleanly without boundary artifacts."""
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            alpha = img.convert("RGBA")
+            bg = Image.new("RGBA", alpha.size, (255, 255, 255, 255))
+            bg.paste(alpha, mask=alpha.split()[3])
+            return bg.convert("RGB")
+        return img.convert("RGB")
+
     def analyze_spectral_power(self, gray_np: np.ndarray) -> Dict[str, float]:
         """
         Compute 2D FFT and radially averaged power spectrum.
-        Natural optical photographs exhibit smooth power-law decay (alpha ~ 1.8 - 2.3).
-        Generative AI models exhibit anomalous decay (alpha < 1.5 or > 2.7) and
+        Natural optical photographs exhibit smooth power-law decay (alpha ~ 1.8 - 2.5).
+        Generative AI models exhibit anomalous decay (alpha < 1.65 or > 2.8) and
         elevated high-frequency energy ratio due to latent de-noising and upsampling.
         """
         h, w = gray_np.shape
-        # Center crop to power of 2 for clean FFT
         size = min(h, w, 512)
         start_y = (h - size) // 2
         start_x = (w - size) // 2
@@ -44,12 +61,12 @@ class AIImageDetector:
         window = np.outer(win_y, win_x)
         crop_windowed = (crop - np.mean(crop)) * window
 
-        # Compute 2D FFT and power spectrum
+        # 2D FFT and power spectrum
         f_transform = np.fft.fftshift(np.fft.fft2(crop_windowed))
         magnitude = np.abs(f_transform)
         power = magnitude ** 2 + 1e-10
 
-        # Compute radial average of power spectrum
+        # Radial average of power spectrum
         cy, cx = size // 2, size // 2
         y, x = np.ogrid[:size, :size]
         r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2).astype(np.int32)
@@ -59,7 +76,7 @@ class AIImageDetector:
         radial_counts = np.bincount(r.ravel())[:max_radius]
         radial_profile = radial_bins / np.maximum(radial_counts, 1)
 
-        # Fit power law slope in mid-to-high frequency band (freq index 10 to max_radius - 5)
+        # Fit power law slope in mid-to-high frequency band
         fit_start = max(5, int(max_radius * 0.08))
         fit_end = int(max_radius * 0.85)
         freqs = np.arange(fit_start, fit_end)
@@ -69,14 +86,13 @@ class AIImageDetector:
         if np.sum(valid) > 10:
             log_freq = np.log(freqs[valid])
             log_pow = np.log(powers[valid])
-            # Linear regression: log(P) = -alpha * log(f) + c
             slope, _ = np.polyfit(log_freq, log_pow, 1)
-            alpha = -slope  # Natural optical photos have alpha approx 2.0
+            alpha = -slope
         else:
             alpha = 2.0
 
-        # High-frequency energy ratio (energy above 60% Nyquist vs total energy)
-        high_cutoff = int(max_radius * 0.60)
+        # High-frequency energy ratio (energy above 55% Nyquist vs total energy)
+        high_cutoff = int(max_radius * 0.55)
         high_energy = float(np.sum(radial_bins[high_cutoff:max_radius]))
         total_energy = float(np.sum(radial_bins[1:max_radius])) + 1e-10
         high_ratio = high_energy / total_energy
@@ -100,64 +116,71 @@ class AIImageDetector:
         Examine chromatic cross-channel consistency.
         Physical camera sensors employ Bayer CFA demosaicing which creates
         characteristic cross-channel gradient correlations between (G-R) and (G-B).
-        Generative models generate pixels directly without Bayer CFA constraints.
+        Generative models synthesize pixels directly without Bayer constraints.
         """
-        arr = np.asarray(rgb_img.convert("RGB"), dtype=np.float32)
+        arr = np.asarray(rgb_img, dtype=np.float32)
         r = arr[:, :, 0]
         g = arr[:, :, 1]
         b = arr[:, :, 2]
 
-        # Difference channels
         diff_gr = g - r
         diff_gb = g - b
 
-        # Compute gradient variances of color difference
         grad_gr = cv2.Laplacian(diff_gr, cv2.CV_32F)
         grad_gb = cv2.Laplacian(diff_gb, cv2.CV_32F)
 
-        # In natural camera demosaicing, gradients of difference channels are highly localized
-        # with low overall variance across uniform areas.
         var_gr = float(np.var(grad_gr))
         var_gb = float(np.var(grad_gb))
         cross_cov = float(np.cov(grad_gr.ravel()[:10000], grad_gb.ravel()[:10000])[0, 1])
 
-        # Normalize indicator
         demosaic_residual = (var_gr + var_gb) / 1000.0
         return {
             "demosaic_residual": round(demosaic_residual, 4),
             "cross_channel_covariance": round(cross_cov, 4)
         }
 
-    def analyze_noise_residual(self, gray_np: np.ndarray) -> Dict[str, float]:
+    def analyze_texture_and_noise_moments(self, gray_np: np.ndarray) -> Dict[str, float]:
         """
-        Analyze the high-pass filtered noise residual.
-        Diffusion model noise schedules produce distinct higher-order moments
-        (skewness and kurtosis) compared to physical CMOS/CCD photon shot noise.
+        Evaluate high-pass noise distribution and spatial texture smoothness.
+        Diffusion model noise schedules produce distinct higher-order moments (excess kurtosis)
+        and characteristic spatial smoothness patterns (lack of natural sensor photon shot noise).
         """
-        # Extract high-frequency residual using 3x3 Laplacian
         lap = cv2.Laplacian(gray_np.astype(np.float32), cv2.CV_32F)
         flat = lap.ravel()
         mean = np.mean(flat)
         std = np.std(flat) + 1e-6
         norm = (flat - mean) / std
 
-        # Compute 3rd and 4th standardized moments
         skewness = float(np.mean(norm ** 3))
-        kurtosis = float(np.mean(norm ** 4) - 3.0)  # Excess kurtosis (Gaussian = 0)
+        kurtosis = float(np.mean(norm ** 4) - 3.0)
+
+        # Micro-texture noise ratio: std of noise across smooth patches
+        h, w = gray_np.shape
+        patch_size = 32
+        patch_vars = []
+        for y in range(0, h - patch_size, patch_size):
+            for x in range(0, w - patch_size, patch_size):
+                patch = gray_np[y:y+patch_size, x:x+patch_size]
+                patch_vars.append(np.var(patch))
+        
+        smooth_patches_count = sum(1 for v in patch_vars if v < 25.0)
+        smooth_ratio = smooth_patches_count / max(len(patch_vars), 1)
 
         return {
             "noise_skewness": round(skewness, 4),
-            "noise_excess_kurtosis": round(kurtosis, 4)
+            "noise_excess_kurtosis": round(kurtosis, 4),
+            "smoothness_ratio": round(float(smooth_ratio), 4)
         }
 
     def check_metadata_and_provenance(self, img: Image.Image) -> Dict[str, Any]:
         """
-        Inspect EXIF, PNG text chunks, and metadata for generative AI signatures or prompt traces.
+        Inspect EXIF, PNG chunks, XMP, IPTC, and dictionary info for AI generation traces.
         """
         ai_markers_found = []
         found_software = None
+        has_camera_hardware = False
 
-        # 1. Check PNG text metadata and info dict (Automatic1111, ComfyUI, Midjourney, NovelAI)
+        # 1. Check PNG text metadata and info dict
         meta_dict = {}
         if hasattr(img, "info") and isinstance(img.info, dict):
             meta_dict.update(img.info)
@@ -167,26 +190,26 @@ class AIImageDetector:
         for k, v in meta_dict.items():
             k_lower = str(k).lower()
             v_lower = str(v).lower()
-            if any(term in k_lower or term in v_lower for term in [
-                "stablediffusion", "stable diffusion", "midjourney", "dall-e", "comfyui", "novelai",
-                "negative prompt", "steps: ", "sampler: ", "cfg scale:", "model: ", "flux"
-            ]):
-                ai_markers_found.append(f"Generation parameters detected in metadata: '{k}'")
-                found_software = k
+            for kw in KNOWN_AI_SIGNATURES:
+                if kw in k_lower or kw in v_lower:
+                    ai_markers_found.append(f"AI generation parameter detected in metadata ('{k}': {str(v)[:50]})")
+                    found_software = str(v)[:40]
+                    break
 
-        # 2. Check EXIF Software / ImageDescription / UserComment
-        has_camera_hardware = False
+        # 2. Check EXIF tags
         try:
             exif = img.getexif()
             if exif:
                 for tag_id, val in exif.items():
                     tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
                     val_str = str(val).lower()
-                    if tag_name in ("Make", "Model", "LensModel") and len(val_str) > 2:
+                    if tag_name in ("Make", "Model", "LensModel", "FocalLength") and len(val_str) > 2:
                         has_camera_hardware = True
-                    if any(term in val_str for term in ["dall-e", "midjourney", "stable diffusion", "flux", "civitai"]):
-                        ai_markers_found.append(f"EXIF tag '{tag_name}' contains AI generator reference: {val_str[:40]}")
-                        found_software = val_str
+                    for kw in KNOWN_AI_SIGNATURES:
+                        if kw in val_str:
+                            ai_markers_found.append(f"EXIF '{tag_name}' contains AI signature: {val_str[:40]}")
+                            found_software = val_str
+                            break
         except Exception:
             pass
 
@@ -201,8 +224,8 @@ class AIImageDetector:
         """
         Evaluate an image and return:
           - is_ai_generated: bool
-          - ai_score: float in [0.0, 1.0] (calibrated probability)
-          - signals: dictionary of individual forensic indicators
+          - ai_probability: float in [0.0, 1.0] (calibrated probability)
+          - forensic_signals: dictionary of individual forensic indicators
           - reasons: list of explanation strings
         """
         if isinstance(image_input, (str, Path)):
@@ -214,7 +237,7 @@ class AIImageDetector:
         meta = self.check_metadata_and_provenance(raw_img)
 
         # Standard resolution for consistent spatial/frequency scaling
-        img = raw_img.convert("RGB")
+        img = self._prepare_rgb_image(raw_img)
         img_analysis = img.resize((512, 512), Image.Resampling.LANCZOS)
         gray_np = np.asarray(img_analysis.convert("L"), dtype=np.float32)
 
@@ -228,61 +251,70 @@ class AIImageDetector:
         demosaic = self.analyze_bayer_demosaicing(img_analysis)
         d_res = demosaic["demosaic_residual"]
 
-        # 3. Noise residual moments
-        noise = self.analyze_noise_residual(gray_np)
-        kurtosis = noise["noise_excess_kurtosis"]
+        # 3. Noise residual moments & smoothness
+        texture = self.analyze_texture_and_noise_moments(gray_np)
+        kurtosis = texture["noise_excess_kurtosis"]
+        smoothness = texture["smoothness_ratio"]
 
         # -------------------------------------------------------------
-        # Forensic Scoring Logic (Calibrated multi-evidence combination)
+        # Forensic Multi-Signal Scoring Logic
         # -------------------------------------------------------------
         reasons = []
         score_components = []
 
-        # (a) Shallow Spectral Decay (hallmark of synthetic texture synthesis)
-        # Natural camera photos and JPEGs have alpha in 1.8 - 4.5. Generative models have alpha < 1.60
-        if alpha < 1.60:
-            deviation = (1.60 - alpha) / 0.8
-            score_components.append(min(0.95, 0.50 + deviation * 0.45))
-            reasons.append(f"Fourier power spectrum exhibits shallow decay (alpha={alpha:.2f}), characteristic of generative high-frequency synthesis.")
+        # (a) Spectral Power Decay (shallow decay indicates synthetic iterative synthesis)
+        if alpha < 1.62:
+            deviation = (1.62 - alpha) / 0.8
+            score_components.append(min(0.95, 0.52 + deviation * 0.45))
+            reasons.append(f"Fourier power spectrum exhibits shallow decay (alpha={alpha:.2f}), characteristic of generative latent de-noising.")
+        elif alpha > 3.0:
+            score_components.append(0.65)
+            reasons.append(f"Anomalous spectral decay rate (alpha={alpha:.2f}) inconsistent with natural optical lenses.")
         else:
             score_components.append(0.06)
 
-        # (b) High-Frequency Energy Ratio (diffusion models preserve intense high-frequency energy across scales)
-        # Natural optical photos have high_ratio < 0.02. Synthetic models often have > 0.05
+        # (b) High-Frequency Energy Ratio
         if high_ratio > 0.045:
-            score_components.append(min(0.92, 0.45 + (high_ratio - 0.045) * 6.0))
-            reasons.append(f"Elevated high-frequency spectral energy ({high_ratio:.3f}) typical of iterative diffusion residual noise.")
+            score_components.append(min(0.92, 0.48 + (high_ratio - 0.045) * 6.0))
+            reasons.append(f"Elevated high-frequency spectral energy ({high_ratio:.3f}) typical of diffusion residual high-pass noise.")
         else:
             score_components.append(0.05)
 
-        # (c) High-frequency angular variance
-        if ang_var > 1.8 and high_ratio > 0.04:
-            score_components.append(0.75)
+        # (c) High-frequency angular grid spikes
+        if ang_var > 1.75 and high_ratio > 0.035:
+            score_components.append(0.78)
             reasons.append(f"Frequency domain displays periodic grid spikes (variance={ang_var:.2f}) from neural upsampling deconvolution.")
         else:
             score_components.append(0.08)
 
         # (d) Demosaicing Inconsistency: lack of physical Bayer CFA correlation
-        if d_res > 6.0 and high_ratio > 0.03:
-            score_components.append(0.70)
+        if d_res > 5.5 and high_ratio > 0.025:
+            score_components.append(0.72)
             reasons.append("Uncorrelated chromatic cross-channel variance exceeding physical optical sensors.")
         else:
             score_components.append(0.08)
 
-        # Base statistical AI probability from physical/frequency evidence
-        base_ai_prob = float(np.average(score_components, weights=[2.0, 2.0, 1.0, 1.0]))
+        # (e) Spatial hyper-smoothness (plastic/airbrushed appearance)
+        if smoothness > 0.55 and alpha < 1.75:
+            score_components.append(0.75)
+            reasons.append(f"Spatial texture exhibits synthetic hyper-smoothness ({int(smoothness * 100)}% smooth patches) without optical sensor photon noise.")
+        else:
+            score_components.append(0.06)
 
-        # Discount if real physical camera hardware metadata is confirmed
-        if meta.get("has_camera_hardware"):
+        # Base statistical AI probability from physical/frequency evidence
+        base_ai_prob = float(np.average(score_components, weights=[2.0, 2.0, 1.2, 1.0, 1.0]))
+
+        # Moderation if genuine physical camera hardware EXIF is verified
+        if meta.get("has_camera_hardware") and not meta.get("has_ai_metadata"):
             base_ai_prob = base_ai_prob * 0.35
 
-        # (e) Metadata definitive evidence
+        # (f) Definitive metadata evidence
         if meta.get("has_ai_metadata"):
-            base_ai_prob = max(0.92, base_ai_prob + 0.40)
+            base_ai_prob = max(0.94, base_ai_prob + 0.45)
             reasons.extend(meta.get("ai_markers_found", []))
 
         ai_score = round(float(np.clip(base_ai_prob, 0.02, 0.98)), 4)
-        is_ai = bool(ai_score >= 0.52)
+        is_ai = bool(ai_score >= 0.50)
 
         return {
             "is_ai_generated": is_ai,
@@ -293,6 +325,7 @@ class AIImageDetector:
                 "angular_grid_variance": ang_var,
                 "demosaic_residual": d_res,
                 "noise_excess_kurtosis": kurtosis,
+                "smoothness_ratio": smoothness,
                 "has_camera_hardware": meta["has_camera_hardware"],
                 "ai_markers": meta["ai_markers_found"]
             },

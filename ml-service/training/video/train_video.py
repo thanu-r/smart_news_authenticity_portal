@@ -61,12 +61,14 @@ def evaluate_video_pipeline(num_test_videos: int = 16):
         for idx, (vid_path, true_label) in enumerate(pairs):
             vid_name = Path(vid_path).name
             result = classifier.predict_video(vid_path)
-            pred_label = result["prediction"].lower()
-            if pred_label == "suspicious":
-                pred_label = "fake"  # Flag suspicious manipulation as detected anomaly
+            raw_pred = result["prediction"].upper()
+            if raw_pred in ["FAKE", "DEEPFAKE", "FAKE_MANIPULATED", "AI_GENERATED", "SUSPICIOUS"]:
+                eval_pred = "fake"
+            else:
+                eval_pred = "real"
 
             y_true.append(true_label)
-            y_pred.append(pred_label)
+            y_pred.append(eval_pred)
 
             test_records.append({
                 "video_id": vid_name,

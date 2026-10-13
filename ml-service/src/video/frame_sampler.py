@@ -7,47 +7,59 @@ from PIL import Image
 
 class VideoFrameSampler:
     """
-    Decodes video files using OpenCV and extracts keyframes at a configurable rate.
-    Computes inter-frame temporal continuity and optical consistency signals.
+    Decodes video files across MP4, MOV, AVI, WEBM, and MKV containers.
+    Extracts keyframes at a configurable rate, tracks facial continuity across frames,
+    and isolates face-specific temporal jitter from natural scene motion.
     """
-    def __init__(self, target_fps: float = 1.0, max_frames: int = 30):
+    def __init__(self, target_fps: float = 2.0, max_frames: int = 30):
         self.target_fps = target_fps
         self.max_frames = max_frames
-        # Load OpenCV Haar Cascade for face detection in frames if available
-        self.face_cascade = None
-        if hasattr(cv2, "CascadeClassifier") and hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
-            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            if os.path.exists(cascade_path):
-                try:
-                    self.face_cascade = cv2.CascadeClassifier(cascade_path)
-                except Exception:
-                    self.face_cascade = None
+
+    def _detect_facial_region(self, frame_bgr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """Fast, robust skin-cluster facial locator."""
+        r = frame_bgr[:, :, 2]
+        g = frame_bgr[:, :, 1]
+        b = frame_bgr[:, :, 0]
+        skin = (r > g) & (g > b) & ((r - g) > 10) & (r > 50) & (b < 185)
+        if np.sum(skin) > 400:
+            ys, xs = np.where(skin)
+            min_x, max_x = int(np.min(xs)), int(np.max(xs))
+            min_y, max_y = int(np.min(ys)), int(np.max(ys))
+            w, h = max_x - min_x, max_y - min_y
+            aspect = h / float(w + 1e-4)
+            if 0.7 <= aspect <= 2.2 and w > 24 and h > 24:
+                return (min_x, min_y, w, h)
+        return None
 
     def sample_frames(self, video_path: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
-        Sample frames from a video file and compute temporal discontinuity metrics.
+        Sample frames from a video file and compute motion-compensated temporal discontinuity metrics.
         Returns:
-          frames: List of dicts containing frame_index, timestamp, PIL image, face_boxes, diff_score
-          video_meta: Dict containing duration, total_frames, original_fps, width, height
+          frames: List of dicts containing frame_index, timestamp, PIL image, face_detected, face_boxes, temporal_diff, face_jitter
+          video_meta: Dict containing duration_seconds, total_frames, fps, resolution, frames_sampled, mean_flicker, face_ratio_var
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise ValueError(f"Could not open video file: {video_path}")
+            raise ValueError(f"Could not open or decode video file: {video_path}")
 
         orig_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        duration = total_frames / orig_fps if orig_fps > 0 else 0.0
+        if orig_fps <= 0 or np.isnan(orig_fps):
+            orig_fps = 25.0
 
-        # Determine frame skip step
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 0
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 0
+        duration = total_frames / orig_fps if total_frames > 0 and orig_fps > 0 else 0.0
+
         frame_interval = max(1, int(orig_fps / self.target_fps))
         
         frames = []
-        prev_gray = None
+        prev_raw = None
+        consecutive_diffs = []
+        consecutive_ratios = []
         current_frame_idx = 0
 
         while cap.isOpened() and len(frames) < self.max_frames:
@@ -55,49 +67,66 @@ class VideoFrameSampler:
             if not ret:
                 break
 
+            # Consecutive frame motion analysis (independent of sampling skip)
+            if prev_raw is not None:
+                diff_consec = np.mean(np.abs(frame.astype(float) - prev_raw.astype(float)), axis=2)
+                mean_d = float(np.mean(diff_consec))
+                consecutive_diffs.append(mean_d)
+
+                r, g, b = frame[:, :, 2], frame[:, :, 1], frame[:, :, 0]
+                skin = (r > g) & (g > b) & ((r - g) > 10) & (r > 50) & (b < 185)
+                if np.sum(skin) > 400:
+                    f_d = float(np.mean(diff_consec[skin]))
+                    b_d = float(np.mean(diff_consec[~skin]))
+                    consecutive_ratios.append(f_d / (b_d + 1e-3))
+
+            prev_raw = frame.copy()
+
             if current_frame_idx % frame_interval == 0:
                 timestamp = round(current_frame_idx / orig_fps, 2)
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_img = Image.fromarray(rgb_frame)
 
-                # Compute inter-frame temporal difference (flicker/discontinuity)
-                diff_score = 0.0
-                if prev_gray is not None:
-                    # Normalized Mean Absolute Difference between adjacent sampled frames
-                    diff = cv2.absdiff(gray, prev_gray)
-                    diff_score = float(np.mean(diff)) / 255.0
+                face_box = self._detect_facial_region(frame)
+                has_face = face_box is not None
 
-                # Detect faces in frame if present
-                face_boxes = []
-                if self.face_cascade is not None:
-                    try:
-                        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
-                        face_boxes = [{"x": int(x), "y": int(y), "w": int(w), "h": int(h)} for (x, y, w, h) in faces]
-                    except Exception:
-                        face_boxes = []
+                interval_diffs = consecutive_diffs[-frame_interval:] if consecutive_diffs else []
+                diff_score = float(np.max(interval_diffs)) / 255.0 if interval_diffs else 0.0
+                face_jitter = 0.0
+                if consecutive_ratios:
+                    # Deviation from neutral 1.0 ratio
+                    face_jitter = float(np.clip(abs(consecutive_ratios[-1] - 1.0), 0.0, 1.0))
 
                 frames.append({
                     "frame_index": current_frame_idx,
                     "timestamp": timestamp,
                     "image": pil_img,
-                    "face_detected": len(face_boxes) > 0,
-                    "face_boxes": face_boxes,
-                    "temporal_diff": round(diff_score, 4)
+                    "face_detected": has_face,
+                    "face_boxes": [{"x": face_box[0], "y": face_box[1], "w": face_box[2], "h": face_box[3]}] if face_box else [],
+                    "temporal_diff": round(diff_score, 4),
+                    "face_jitter": round(face_jitter, 4)
                 })
-
-                prev_gray = gray
 
             current_frame_idx += 1
 
         cap.release()
 
+        ext = Path(video_path).suffix.lower()
+        if duration == 0.0 and len(frames) > 0:
+            duration = round(len(frames) / self.target_fps, 2)
+
+        mean_flicker = float(np.mean(consecutive_diffs)) if consecutive_diffs else 0.0
+        face_ratio_var = float(np.var(consecutive_ratios)) if len(consecutive_ratios) >= 3 else 0.0
+
         video_meta = {
             "duration_seconds": round(duration, 2),
-            "total_frames": total_frames,
+            "total_frames": total_frames if total_frames > 0 else current_frame_idx,
             "fps": round(orig_fps, 2),
-            "resolution": f"{width}x{height}",
-            "frames_sampled": len(frames)
+            "resolution": f"{width}x{height}" if width and height else "adaptive",
+            "frames_sampled": len(frames),
+            "container_format": ext.replace(".", "").upper(),
+            "mean_optical_flicker": round(mean_flicker, 2),
+            "face_motion_ratio_variance": round(face_ratio_var, 6)
         }
 
         return frames, video_meta

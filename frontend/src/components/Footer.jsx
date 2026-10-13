@@ -10,7 +10,7 @@ export default function Footer() {
       try {
         const res = await modelsAPI.getStatus();
         setModelStatus(res.data);
-      } catch (err) {
+      } catch {
         // Fallback status if offline
         setModelStatus({
           text_model: 'transformer_v1 (Active)',

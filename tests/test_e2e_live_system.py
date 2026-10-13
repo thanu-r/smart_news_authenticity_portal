@@ -66,8 +66,8 @@ def run_e2e_tests():
     assert text_res.status_code == 200, f"Text verification failed: {text_res.text}"
     text_data = text_res.json()
     print(f" -> Prediction: {text_data['prediction']}, Calibrated Confidence: {text_data['calibrated_confidence']:.2%}")
-    print(f" -> Probabilities: {text_data['probabilities']}")
-    print(f" -> Explanation: {text_data['explanation']['summary'][:100]}...")
+    expl_summary = text_data.get('explanation', {}).get('summary') or text_data.get('explanation', {}).get('executive_summary') or str(text_data.get('explanation'))
+    print(f" -> Explanation: {expl_summary[:100]}...")
 
     # 4. Text Verification (Baseline Model)
     print("\n[4] Text Verification (TF-IDF + Logistic Regression Baseline):")
