@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import urllib.parse
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -12,12 +13,16 @@ from src.evidence.claim_extractor import ClaimExtractor
 from src.evidence.stance_detector import StanceDetector
 from src.source.credibility_analyzer import SourceCredibilityAnalyzer
 
-# Curated high-credibility news RSS feeds for live cross-referencing
+# Curated high-credibility news and fact-checking RSS feeds for live cross-referencing
 VERIFIED_RSS_FEEDS = [
-    {"name": "Reuters World", "url": "https://feeds.reuters.com/reuters/worldNews", "credibility": 0.98},
-    {"name": "BBC News", "url": "https://feeds.bbci.co.uk/news/rss.xml", "credibility": 0.94},
-    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "credibility": 0.92},
-    {"name": "PBS NewsHour", "url": "https://www.pbs.org/newshour/feeds/rss/headlines", "credibility": 0.93}
+    {"name": "PolitiFact", "url": "https://www.politifact.com/rss/factchecks/", "credibility": 0.98, "is_fact_checker": True},
+    {"name": "FactCheck.org", "url": "https://www.factcheck.org/feed/", "credibility": 0.98, "is_fact_checker": True},
+    {"name": "NYT World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "credibility": 0.96, "is_fact_checker": False},
+    {"name": "BBC News", "url": "https://feeds.bbci.co.uk/news/world/rss.xml", "credibility": 0.95, "is_fact_checker": False},
+    {"name": "The Guardian", "url": "https://www.theguardian.com/world/rss", "credibility": 0.94, "is_fact_checker": False},
+    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "credibility": 0.93, "is_fact_checker": False},
+    {"name": "AP News", "url": "https://feedx.net/rss/ap.xml", "credibility": 0.96, "is_fact_checker": False},
+    {"name": "PBS NewsHour", "url": "https://www.pbs.org/newshour/feeds/rss/headlines", "credibility": 0.94, "is_fact_checker": False}
 ]
 
 class EvidenceRetriever:
@@ -55,17 +60,25 @@ class EvidenceRetriever:
                     entry_link = entry.get("link", "")
                     combined_entry = f"{entry_title}. {entry_summary}"
 
-                    # Quick topical filter
-                    q_words = set(queries[0].lower().split() if queries else [])
-                    entry_words = set(combined_entry.lower().split())
-                    if len(q_words.intersection(entry_words)) >= 2:
+                    # Multi-query topical keyword matching
+                    all_query_words = set()
+                    for q in queries:
+                        all_query_words.update([w.lower() for w in q.split() if len(w) > 3])
+                    claim_words = set([w.lower() for w in re.findall(r"\w{4,}", primary_claim)])
+                    target_words = all_query_words.union(claim_words)
+
+                    entry_words = set(re.findall(r"\w{4,}", combined_entry.lower()))
+                    match_count = len(target_words.intersection(entry_words))
+
+                    if match_count >= 2 or (feed_info.get("is_fact_checker") and match_count >= 1):
                         all_candidates.append({
                             "title": entry_title,
                             "snippet": entry_summary[:300],
                             "url": entry_link,
                             "publisher": feed_info["name"],
                             "published_at": entry.get("published", "Recent"),
-                            "source_credibility": feed_info["credibility"]
+                            "source_credibility": feed_info["credibility"],
+                            "is_fact_checker": feed_info.get("is_fact_checker", False)
                         })
             except Exception:
                 continue

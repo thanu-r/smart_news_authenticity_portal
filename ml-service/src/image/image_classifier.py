@@ -150,7 +150,7 @@ class ImageForensicClassifier:
             final_pred = "FAKE_TAMPERED"
             confidence = max(norm_tampered, 0.65)
             explanation = f"Detected visual manipulation signals: {'; '.join(anomalies) if anomalies else 'significant forensic feature anomalies'}."
-        elif norm_real >= 0.55 and not ai_result["is_ai_generated"] and ai_prob < 0.35:
+        elif (norm_real >= 0.46 and norm_real > norm_tampered and len(anomalies) == 0 and not ai_result["is_ai_generated"] and ai_prob < 0.35) or (norm_real >= 0.52 and not ai_result["is_ai_generated"] and ai_prob < 0.35):
             final_pred = "REAL"
             confidence = norm_real
             explanation = (

@@ -114,30 +114,37 @@ class MultimodalDecisionFusionEngine:
             source_result = self.source_analyzer.evaluate_source(url_or_domain=url, author=author)
             modalities_present.append("source")
             cred = source_result["credibility_score"]
-            # Convert source credibility into probability distribution
+            # Convert source credibility into probability prior (reputable domain does not guarantee truth)
             if source_result["category"] in ["LOW_CREDIBILITY", "SATIRE"]:
-                s_fake, s_real, s_susp = 0.70, 0.10, 0.20
+                s_fake, s_real, s_susp = 0.75, 0.08, 0.17
+                s_weight = 1.2
             elif cred >= 0.85:
-                s_fake, s_real, s_susp = 0.05, 0.85, 0.10
+                # High institutional credibility: moderate prior, not an automatic guarantee of truth
+                s_fake, s_real, s_susp = 0.12, 0.58, 0.30
+                s_weight = 0.6
             else:
-                s_fake, s_real, s_susp = 0.25, 0.45, 0.30
+                s_fake, s_real, s_susp = 0.25, 0.40, 0.35
+                s_weight = 0.5
             modality_probs.append(np.array([s_fake, s_real, s_susp]))
-            modality_weights.append(1.0)
+            modality_weights.append(s_weight)
 
         # 5. External Evidence Retrieval
         evidence_result = None
         if retrieve_evidence and has_text:
             evidence_result = self.evidence_retriever.retrieve_evidence(text=text or "", title=title)
             modalities_present.append("evidence")
-            corroboration = evidence_result["corroboration_score"]
             if evidence_result["overall_stance"] == "REFUTED":
-                e_fake, e_real, e_susp = 0.80, 0.05, 0.15
+                e_fake, e_real, e_susp = 0.85, 0.05, 0.10
+                e_weight = 1.8  # Strong refutation weight from verified fact-checks
             elif evidence_result["overall_stance"] == "CORROBORATED":
-                e_fake, e_real, e_susp = 0.08, 0.82, 0.10
+                e_fake, e_real, e_susp = 0.06, 0.80, 0.14
+                e_weight = 1.4
             else:
-                e_fake, e_real, e_susp = 0.25, 0.35, 0.40
+                # INSUFFICIENT_EVIDENCE or MIXED_OR_AMBIGUOUS (e.g. breaking news)
+                e_fake, e_real, e_susp = 0.20, 0.25, 0.55
+                e_weight = 1.0
             modality_probs.append(np.array([e_fake, e_real, e_susp]))
-            modality_weights.append(1.2)
+            modality_weights.append(e_weight)
 
         # 6. Cross-Modal Consistency Evaluation
         cross_modal_result = self.cross_modal_engine.analyze_cross_modal_consistency(
@@ -293,13 +300,28 @@ class MultimodalDecisionFusionEngine:
         pred_label = labels[best_idx].upper()
         confidence = float(calibrated_probs[best_idx])
 
-        # Enforce SUSPICIOUS on cross-modal conflict or ambiguous probability
-        if has_cross_modal_conflict:
+        # 1. Fact-checking evidence refutation takes precedence
+        if evidence_result and evidence_result.get("overall_stance") == "REFUTED":
+            if pred_label == "REAL":
+                pred_label = "FAKE"
+                calibrated_probs[0] = max(calibrated_probs[0], 0.74)
+                calibrated_probs[1] = min(calibrated_probs[1], 0.10)
+                calibrated_probs = calibrated_probs / np.sum(calibrated_probs)
+                confidence = float(calibrated_probs[0])
+            final_pred = pred_label
+        # 2. Cross-modal conflict (e.g., text authentic vs fake image/video)
+        elif has_cross_modal_conflict:
             final_pred = "SUSPICIOUS"
-            # Elevate suspicious probability
+            calibrated_probs[2] = max(calibrated_probs[2], 0.58)
+            calibrated_probs = calibrated_probs / np.sum(calibrated_probs)
+            confidence = float(calibrated_probs[2])
+        # 3. Uncorroborated breaking news or insufficient evidence
+        elif evidence_result and evidence_result.get("corroboration_status") == "INSUFFICIENT_EVIDENCE" and confidence < 0.65:
+            final_pred = "SUSPICIOUS"
             calibrated_probs[2] = max(calibrated_probs[2], 0.55)
             calibrated_probs = calibrated_probs / np.sum(calibrated_probs)
             confidence = float(calibrated_probs[2])
+        # 4. Ambiguous probability
         elif confidence < 0.55 and pred_label != "SUSPICIOUS":
             final_pred = "SUSPICIOUS"
             confidence = float(calibrated_probs[2])

@@ -163,3 +163,58 @@ def safe_fetch_url(url: str, timeout: float = DEFAULT_TIMEOUT) -> Tuple[str, str
         return text, current_url, resp.status_code
 
     raise SafeFetchError(f"Too many redirects (exceeded maximum limit of {MAX_REDIRECTS}).")
+
+def safe_fetch_image_bytes(url: str, timeout: float = DEFAULT_TIMEOUT) -> Tuple[bytes, str]:
+    """
+    Safely download image bytes from a URL with SSRF validation,
+    safe redirects, and Content-Type inspection.
+    """
+    current_url = url.strip()
+    session = requests.Session()
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 (SmartNewsVerifier/2.0)"
+        ),
+        "Accept": "image/webp,image/apng,image/jpeg,image/png,*/*;q=0.8",
+    }
+
+    for redirect_count in range(MAX_REDIRECTS + 1):
+        validate_url_safety(current_url)
+
+        try:
+            resp = session.get(
+                current_url,
+                headers=headers,
+                timeout=timeout,
+                allow_redirects=False,
+                stream=True
+            )
+        except requests.exceptions.Timeout:
+            raise SafeFetchError(f"Image connection timed out after {timeout}s.")
+        except requests.exceptions.RequestException as e:
+            raise SafeFetchError(f"Network error while fetching image: {str(e)}")
+
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            if not location:
+                raise SafeFetchError("Image redirect response missing Location header.")
+            current_url = urllib.parse.urljoin(current_url, location)
+            resp.close()
+            continue
+
+        if resp.status_code != 200:
+            resp.close()
+            raise SafeFetchError(f"Image server returned HTTP error status {resp.status_code}.")
+
+        content_bytes = bytearray()
+        for chunk in resp.iter_content(chunk_size=65536):
+            if chunk:
+                content_bytes.extend(chunk)
+                if len(content_bytes) > MAX_CONTENT_LENGTH:
+                    resp.close()
+                    raise SafeFetchError("Image size exceeds maximum allowed limit.")
+
+        return bytes(content_bytes), current_url
+
+    raise SafeFetchError("Too many redirects while fetching image.")

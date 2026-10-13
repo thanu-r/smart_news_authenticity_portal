@@ -39,6 +39,7 @@ export const newsAPI = {
   search: (query, limit = 20) => 
     api.get(`/api/news/search?q=${encodeURIComponent(query)}&limit=${limit}`),
   refresh: () => api.post('/api/news/refresh'),
+  verifyOne: (id) => api.post(`/api/news/verify-one/${id}`),
 };
 
 // History APIs

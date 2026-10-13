@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ShieldAlert, FileText, Globe, Image as ImageIcon, 
-  Video, Layers, Upload, ArrowRight, Loader2, Sparkles, CheckCircle2 
+  Video, Layers, Upload, ArrowRight, Loader2, Sparkles, CheckCircle2, ExternalLink 
 } from 'lucide-react';
 import { verifyAPI } from '../services/api';
 import DecisionBadge from '../components/DecisionBadge';
@@ -478,6 +478,27 @@ export default function VerifyPortal() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Top Verdict Panel */}
             <div className="glass-panel glow-panel" style={{ padding: '28px' }}>
+              {result.title && (
+                <div style={{ marginBottom: '18px', paddingBottom: '14px', borderBottom: '1px solid var(--border-glass)' }}>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--primary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '4px' }}>
+                    Extracted Article Title
+                  </div>
+                  <h3 style={{ fontSize: '1.18rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.4, margin: '4px 0' }}>
+                    {result.title}
+                  </h3>
+                  {result.source_url && (
+                    <a
+                      href={result.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-dim)', textDecoration: 'none', marginTop: '4px' }}
+                    >
+                      <span>{result.source_url}</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600 }}>

@@ -19,7 +19,7 @@ from backend.app.schemas.user_schemas import UserResponse
 from backend.app.schemas.verification_schemas import (
     TextVerificationRequest, UrlVerificationRequest, VerificationResponse
 )
-from backend.app.utils.safe_fetcher import safe_fetch_url, SSRFSecurityError, SafeFetchError
+from backend.app.utils.safe_fetcher import safe_fetch_url, safe_fetch_image_bytes, SSRFSecurityError, SafeFetchError
 from backend.app.utils.article_extractor import extract_article_from_html, ArticleExtractionError
 
 # Import ML service engines
@@ -154,6 +154,18 @@ async def verify_url(
             detail=str(e)
         )
 
+    # Optional multimodal analysis: extract and analyze lead image if present
+    image_input = None
+    lead_img_url = article.get("lead_image_url")
+    if lead_img_url:
+        try:
+            img_bytes, _ = safe_fetch_image_bytes(lead_img_url, timeout=4.0)
+            if img_bytes:
+                image_input = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                logger.info(f"verify_url: Successfully retrieved lead image from {lead_img_url}")
+        except Exception as e:
+            logger.info(f"verify_url: Lead image retrieval skipped ({lead_img_url}): {e}")
+
     engine = get_fusion_engine()
     model_type = getattr(req, "model_type", None) or "transformer"
     result = engine.verify_content(
@@ -161,6 +173,7 @@ async def verify_url(
         title=title,
         url=final_url,
         author=author,
+        image_input=image_input,
         model_type=model_type,
         retrieve_evidence=True
     )
@@ -182,7 +195,7 @@ async def verify_url(
         "text": result.get("text_analysis"),
         "source": result.get("source_credibility"),
         "evidence": result.get("evidence_retrieval"),
-        "image": None,
+        "image": result.get("image_forensics"),
         "video": None
     }
 
@@ -199,7 +212,7 @@ async def verify_url(
         text_snippet=text_content[:300],
         source_url=final_url,
         text_analysis=result.get("text_analysis"),
-        image_forensics=None,
+        image_forensics=result.get("image_forensics"),
         video_forensics=None,
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),

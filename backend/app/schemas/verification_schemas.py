@@ -55,9 +55,15 @@ class LiveNewsItem(BaseModel):
     summary: str
     url: str
     source: str
+    category: Optional[str] = "General"
+    image_url: Optional[str] = None
     published_at: str
+    verified_at: Optional[str] = None
     verified: bool = False
+    verification_status: Optional[str] = None
+    confidence: Optional[float] = None
     verification_result: Optional[Dict[str, Any]] = None
+    evidence: Optional[List[Dict[str, Any]]] = None
 
 class AdminStatsResponse(BaseModel):
     total_verifications: int
