@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  ShieldAlert, ShieldCheck, AlertTriangle, FileText, Globe, Image as ImageIcon, 
-  Video, Layers, Upload, ArrowRight, Loader2, Sparkles, RefreshCw, CheckCircle2 
+  ShieldAlert, FileText, Globe, Image as ImageIcon, 
+  Video, Layers, Upload, ArrowRight, Loader2, Sparkles, CheckCircle2 
 } from 'lucide-react';
 import { verifyAPI } from '../services/api';
 import DecisionBadge from '../components/DecisionBadge';
@@ -77,6 +77,7 @@ export default function VerifyPortal() {
         if (!bodyText.trim()) throw new Error('Please enter text content to verify.');
         setLoadingStep('Tokenizing and evaluating via calibrated Transformer...');
         res = await verifyAPI.verifyText({
+          title: headline.trim() || undefined,
           headline: headline.trim() || undefined,
           text: bodyText.trim(),
           model_type: selectedModel,
@@ -94,7 +95,10 @@ export default function VerifyPortal() {
         const formData = new FormData();
         formData.append('file', imageFile);
         formData.append('image', imageFile);
-        if (headline.trim()) formData.append('title', headline.trim());
+        if (headline.trim()) {
+          formData.append('title', headline.trim());
+          formData.append('headline', headline.trim());
+        }
         if (bodyText.trim()) formData.append('text', bodyText.trim());
         res = await verifyAPI.verifyImage(formData);
       } else if (activeTab === 'video') {
@@ -103,6 +107,11 @@ export default function VerifyPortal() {
         const formData = new FormData();
         formData.append('file', videoFile);
         formData.append('video', videoFile);
+        if (headline.trim()) {
+          formData.append('title', headline.trim());
+          formData.append('headline', headline.trim());
+        }
+        if (bodyText.trim()) formData.append('text', bodyText.trim());
         res = await verifyAPI.verifyVideo(formData);
       } else {
         // Multimodal
@@ -111,7 +120,10 @@ export default function VerifyPortal() {
         }
         setLoadingStep('Fusing multimodal signals, cross-checking consistency, and retrieving ground-truth evidence...');
         const formData = new FormData();
-        if (headline.trim()) formData.append('headline', headline.trim());
+        if (headline.trim()) {
+          formData.append('title', headline.trim());
+          formData.append('headline', headline.trim());
+        }
         if (bodyText.trim()) formData.append('text', bodyText.trim());
         if (urlInput.trim()) formData.append('url', urlInput.trim());
         if (imageFile) {
@@ -586,8 +598,8 @@ export default function VerifyPortal() {
             )}
 
             {/* Retrieved Evidence Sources */}
-            {result.evidence && result.evidence.length > 0 && (
-              <EvidenceList evidence={result.evidence} />
+            {((result.evidence && result.evidence.length > 0) || (result.evidence_retrieval?.evidence_list && result.evidence_retrieval.evidence_list.length > 0)) && (
+              <EvidenceList evidence={result.evidence || result.evidence_retrieval.evidence_list} />
             )}
           </div>
         )}

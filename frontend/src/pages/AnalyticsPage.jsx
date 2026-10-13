@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, CheckCircle2, Shield, Activity, Cpu, Video, Award, Zap, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Activity, Cpu, Video, Award, Zap, Loader2 } from 'lucide-react';
 import { modelsAPI } from '../services/api';
 
 export default function AnalyticsPage() {
@@ -53,6 +53,20 @@ export default function AnalyticsPage() {
     fetchMetrics();
   }, []);
 
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '60px 20px', textAlign: 'center' }}>
+        <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 16px', color: 'var(--primary)' }} />
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Loading empirical model benchmark metrics...</div>
+      </div>
+    );
+  }
+
+  const baselineAcc = metrics?.baseline_text?.test_accuracy ? `${(metrics.baseline_text.test_accuracy * 100).toFixed(2)}%` : '84.87%';
+  const transformerRecall = metrics?.transformer_text?.suspicious_recall ? `${(metrics.transformer_text.suspicious_recall * 100).toFixed(2)}%` : '96.00%';
+  const imageAcc = metrics?.image_forensics?.test_accuracy ? `${(metrics.image_forensics.test_accuracy * 100).toFixed(2)}%` : '76.00%';
+  const videoAcc = metrics?.video_deepfake?.test_accuracy ? `${(metrics.video_deepfake.test_accuracy * 100).toFixed(2)}%` : '70.00%';
+
   return (
     <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '32px 20px 60px' }}>
       {/* Header */}
@@ -78,7 +92,7 @@ export default function AnalyticsPage() {
             <Cpu size={20} color="var(--primary)" />
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-            84.87%
+            {baselineAcc}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--real-color)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <CheckCircle2 size={13} /> Test Accuracy (ISOT + LIAR2)
@@ -91,7 +105,7 @@ export default function AnalyticsPage() {
             <Zap size={20} color="var(--purple)" />
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-            96.00%
+            {transformerRecall}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--purple)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <CheckCircle2 size={13} /> High-Risk Detection Recall
@@ -104,7 +118,7 @@ export default function AnalyticsPage() {
             <Activity size={20} color="#ec4899" />
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-            76.00%
+            {imageAcc}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#ec4899', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <CheckCircle2 size={13} /> Splicing & ELA Detection
@@ -117,7 +131,7 @@ export default function AnalyticsPage() {
             <Video size={20} color="#3b82f6" />
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-            70.00%
+            {videoAcc}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <CheckCircle2 size={13} /> Keyframe Flicker F1: 0.67

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Newspaper, History, BarChart3, Settings, LogIn, LogOut, User, Menu, X } from 'lucide-react';
+import { ShieldCheck, Newspaper, History, BarChart3, Settings, LogIn, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
@@ -9,7 +9,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => path === '/' ? (location.pathname === '/' || location.pathname === '/verify') : location.pathname === path;
 
   const handleLogout = () => {
     logout();

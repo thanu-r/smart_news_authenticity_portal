@@ -4,12 +4,15 @@ from pydantic import BaseModel, Field
 
 class TextVerificationRequest(BaseModel):
     title: Optional[str] = Field(None, description="Headline or title of the news article")
+    headline: Optional[str] = Field(None, description="Headline alias")
     text: str = Field(..., min_length=10, description="Body text or claim to verify")
     url: Optional[str] = Field(None, description="Source URL if available")
     author: Optional[str] = Field(None, description="Author attribution if available")
+    model_type: Optional[str] = Field("transformer", description="transformer or baseline")
 
 class UrlVerificationRequest(BaseModel):
     url: str = Field(..., description="Web article URL to scrape and verify")
+    model_type: Optional[str] = Field("transformer", description="transformer or baseline")
 
 class VerificationResponse(BaseModel):
     id: str
@@ -26,6 +29,7 @@ class VerificationResponse(BaseModel):
     video_forensics: Optional[Dict[str, Any]] = None
     source_credibility: Optional[Dict[str, Any]] = None
     evidence_retrieval: Optional[Dict[str, Any]] = None
+    evidence: Optional[List[Dict[str, Any]]] = None
     cross_modal_consistency: Optional[Dict[str, Any]] = None
     modality_breakdown: Optional[Dict[str, Any]] = None
     modality_weights: Optional[Dict[str, float]] = None

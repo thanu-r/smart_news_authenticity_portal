@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, Users, AlertTriangle, RefreshCw, CheckCircle, ShieldAlert, Cpu, Database, Loader2 } from 'lucide-react';
+import { Settings, RefreshCw, ShieldAlert, Cpu, Loader2 } from 'lucide-react';
 import { adminAPI } from '../services/api';
 import DecisionBadge from '../components/DecisionBadge';
 
@@ -39,12 +39,21 @@ export default function AdminDashboard() {
     try {
       const res = await adminAPI.triggerRetrain(modality);
       setRetrainNotice(`Retraining initiated successfully for ${modality}. Job ID: ${res.data.job_id || 'rt-queue-101'}`);
-    } catch (err) {
+    } catch {
       setRetrainNotice(`Triggered simulated re-calibration pipeline for ${modality}.`);
     } finally {
       setRetrainingModality(null);
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '60px 20px', textAlign: 'center' }}>
+        <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 16px', color: 'var(--primary)' }} />
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Loading administration console...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '32px 20px 60px' }}>

@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 class UserRole:
     USER = "USER"
@@ -14,8 +14,19 @@ class UserRegister(BaseModel):
     role: Optional[str] = UserRole.USER
 
 class UserLogin(BaseModel):
-    username_or_email: str
+    username_or_email: Optional[str] = None
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_login_field(cls, values):
+        if isinstance(values, dict):
+            ident = values.get("username_or_email") or values.get("email") or values.get("username")
+            if ident:
+                values["username_or_email"] = ident
+        return values
 
 class UserResponse(BaseModel):
     id: str

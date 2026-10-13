@@ -22,6 +22,7 @@ export default function App() {
           <main style={{ flex: 1 }}>
             <Routes>
               <Route path="/" element={<VerifyPortal />} />
+              <Route path="/verify" element={<VerifyPortal />} />
               <Route path="/news" element={<LiveNews />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />

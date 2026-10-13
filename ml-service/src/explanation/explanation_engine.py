@@ -120,6 +120,7 @@ class MultiFactorExplanationEngine:
         return {
             "prediction": final_prediction,
             "confidence": round(confidence, 4),
+            "summary": executive_summary,
             "executive_summary": executive_summary,
             "key_factors": key_factors,
             "detailed_reasons": detailed_bullets

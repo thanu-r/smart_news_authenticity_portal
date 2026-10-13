@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Newspaper, Search, RefreshCw, ExternalLink, ShieldCheck, Filter, Loader2, Sparkles } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Newspaper, Search, RefreshCw, ExternalLink, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { newsAPI, verifyAPI } from '../services/api';
 import DecisionBadge from '../components/DecisionBadge';
 
@@ -14,7 +14,7 @@ export default function LiveNews() {
 
   const categories = ['All', 'Politics', 'Science & Tech', 'Business', 'World', 'Health'];
 
-  const fetchNews = async () => {
+  const fetchNews = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -73,11 +73,11 @@ export default function LiveNews() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCategory]);
 
   useEffect(() => {
     fetchNews();
-  }, [selectedCategory]);
+  }, [fetchNews]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -112,6 +112,7 @@ export default function LiveNews() {
     setVerifyingId(article.id);
     try {
       const res = await verifyAPI.verifyText({
+        title: article.title,
         headline: article.title,
         text: article.summary || article.content || article.title,
         url: article.url,
@@ -159,6 +160,13 @@ export default function LiveNews() {
           <span>{refreshing ? 'Refreshing Feeds...' : 'Sync Live Feeds'}</span>
         </button>
       </div>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'var(--fake-bg)', border: '1px solid var(--fake-glow)', borderRadius: '8px', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '20px' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="glass-panel" style={{ padding: '16px 20px', marginBottom: '28px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>

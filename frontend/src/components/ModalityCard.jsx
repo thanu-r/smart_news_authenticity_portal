@@ -17,7 +17,6 @@ export default function ModalityCard({ title, modality, data, weight }) {
 
   const prediction = data.prediction || (data.credible ? 'REAL' : 'SUSPICIOUS');
   const confidence = data.confidence !== undefined ? Math.round(data.confidence * 100) : null;
-  const rawProb = data.raw_probability !== undefined ? Math.round(data.raw_probability * 100) : null;
 
   return (
     <div className="glass-panel" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

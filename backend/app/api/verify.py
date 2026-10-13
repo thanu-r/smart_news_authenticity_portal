@@ -63,21 +63,26 @@ async def verify_text(
 ):
     """Verify raw news text or statement against text transformer and evidence retrieval."""
     engine = get_fusion_engine()
+    title = req.title or req.headline
+    model_type = getattr(req, "model_type", None) or "transformer"
     result = engine.verify_content(
         text=req.text,
-        title=req.title,
+        title=title,
         url=req.url,
         author=req.author,
+        model_type=model_type,
         retrieve_evidence=True
     )
 
     verif_id = await _persist_verification({
-        "title": req.title,
+        "title": title,
         "text_snippet": req.text[:300],
         "source_url": req.url,
         "author": req.author,
         **result
     }, current_user)
+
+    evidence_items = result.get("evidence_retrieval", {}).get("evidence_list") if isinstance(result.get("evidence_retrieval"), dict) else None
 
     return VerificationResponse(
         id=verif_id,
@@ -86,7 +91,7 @@ async def verify_text(
         calibrated_confidence=result.get("calibrated_confidence", result["confidence"]),
         probabilities=result["probabilities"],
         modalities_analyzed=result["modalities_analyzed"],
-        title=req.title,
+        title=title,
         text_snippet=req.text[:300],
         source_url=req.url,
         text_analysis=result.get("text_analysis"),
@@ -94,6 +99,7 @@ async def verify_text(
         video_forensics=None,
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),
+        evidence=evidence_items,
         cross_modal_consistency=result.get("cross_modal_consistency"),
         explanation=result["explanation"],
         created_at=datetime.now(timezone.utc)
@@ -149,11 +155,13 @@ async def verify_url(
         )
 
     engine = get_fusion_engine()
+    model_type = getattr(req, "model_type", None) or "transformer"
     result = engine.verify_content(
         text=text_content,
         title=title,
         url=final_url,
         author=author,
+        model_type=model_type,
         retrieve_evidence=True
     )
 
@@ -178,6 +186,8 @@ async def verify_url(
         "video": None
     }
 
+    evidence_items = result.get("evidence_retrieval", {}).get("evidence_list") if isinstance(result.get("evidence_retrieval"), dict) else None
+
     return VerificationResponse(
         id=verif_id,
         prediction=result["prediction"],
@@ -193,6 +203,7 @@ async def verify_url(
         video_forensics=None,
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),
+        evidence=evidence_items,
         cross_modal_consistency=result.get("cross_modal_consistency"),
         modality_breakdown=modality_breakdown,
         modality_weights=result.get("modality_weights", {"text": 0.6, "source": 0.4}),
@@ -205,6 +216,7 @@ async def verify_image(
     file: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     title: Optional[str] = Form(None),
+    headline: Optional[str] = Form(None),
     text: Optional[str] = Form(None),
     current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
@@ -243,12 +255,13 @@ async def verify_image(
         f"dimensions={pil_image.size}, mode={pil_image.mode}"
     )
 
+    final_title = title or headline
     engine = get_fusion_engine()
     result = engine.verify_content(
         text=text,
-        title=title,
+        title=final_title,
         image_input=pil_image,
-        retrieve_evidence=bool(text or title)
+        retrieve_evidence=bool(text or final_title)
     )
 
     logger.info(
@@ -257,7 +270,7 @@ async def verify_image(
     )
 
     verif_id = await _persist_verification({
-        "title": title or upload_file.filename,
+        "title": final_title or upload_file.filename,
         "text_snippet": (text[:300] if text else "Image Forensic Analysis"),
         "media_type": "image",
         "filename": upload_file.filename,
@@ -271,6 +284,8 @@ async def verify_image(
         "source": result.get("source_credibility")
     }
 
+    evidence_items = result.get("evidence_retrieval", {}).get("evidence_list") if isinstance(result.get("evidence_retrieval"), dict) else None
+
     return VerificationResponse(
         id=verif_id,
         prediction=result["prediction"],
@@ -278,7 +293,7 @@ async def verify_image(
         calibrated_confidence=result.get("calibrated_confidence", result["confidence"]),
         probabilities=result["probabilities"],
         modalities_analyzed=result["modalities_analyzed"],
-        title=title or upload_file.filename,
+        title=final_title or upload_file.filename,
         text_snippet=text[:300] if text else None,
         source_url=None,
         text_analysis=result.get("text_analysis"),
@@ -286,6 +301,7 @@ async def verify_image(
         video_forensics=None,
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),
+        evidence=evidence_items,
         cross_modal_consistency=result.get("cross_modal_consistency"),
         modality_breakdown=modality_breakdown,
         modality_weights={"image": 1.0},
@@ -298,6 +314,7 @@ async def verify_video(
     file: Optional[UploadFile] = File(None),
     video: Optional[UploadFile] = File(None),
     title: Optional[str] = Form(None),
+    headline: Optional[str] = Form(None),
     text: Optional[str] = Form(None),
     current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
@@ -333,13 +350,14 @@ async def verify_video(
 
     logger.info(f"verify_video: Received video '{upload_file.filename}', size={len(contents)} bytes, saved to '{temp_path}'")
 
+    final_title = title or headline
     try:
         engine = get_fusion_engine()
         result = engine.verify_content(
             text=text,
-            title=title,
+            title=final_title,
             video_path=str(temp_path),
-            retrieve_evidence=bool(text or title)
+            retrieve_evidence=bool(text or final_title)
         )
     except Exception as e:
         logger.error(f"verify_video: Video pipeline inference failure: {str(e)}", exc_info=True)
@@ -357,7 +375,7 @@ async def verify_video(
     )
 
     verif_id = await _persist_verification({
-        "title": title or upload_file.filename,
+        "title": final_title or upload_file.filename,
         "text_snippet": (text[:300] if text else "Video Deepfake Forensic Analysis"),
         "media_type": "video",
         "filename": upload_file.filename,
@@ -371,6 +389,8 @@ async def verify_video(
         "source": result.get("source_credibility")
     }
 
+    evidence_items = result.get("evidence_retrieval", {}).get("evidence_list") if isinstance(result.get("evidence_retrieval"), dict) else None
+
     return VerificationResponse(
         id=verif_id,
         prediction=result["prediction"],
@@ -378,12 +398,13 @@ async def verify_video(
         calibrated_confidence=result.get("calibrated_confidence", result["confidence"]),
         probabilities=result["probabilities"],
         modalities_analyzed=result["modalities_analyzed"],
-        title=title or upload_file.filename,
+        title=final_title or upload_file.filename,
         text_snippet=text[:300] if text else None,
         image_forensics=None,
         video_forensics=result.get("video_forensics"),
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),
+        evidence=evidence_items,
         cross_modal_consistency=result.get("cross_modal_consistency"),
         modality_breakdown=modality_breakdown,
         modality_weights={"video": 1.0},
@@ -394,18 +415,21 @@ async def verify_video(
 @router.post("/multimodal", response_model=VerificationResponse)
 async def verify_multimodal(
     title: Optional[str] = Form(None),
+    headline: Optional[str] = Form(None),
     text: Optional[str] = Form(None),
     url: Optional[str] = Form(None),
     author: Optional[str] = Form(None),
+    model_type: Optional[str] = Form("transformer"),
     image: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
     video: Optional[UploadFile] = File(None),
     current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
     """Verify arbitrary combinations of text, image, video, and source attribution in one unified request."""
+    final_title = title or headline
     actual_image = image or file
     has_text = bool(text and text.strip())
-    has_title = bool(title and title.strip())
+    has_title = bool(final_title and final_title.strip())
     has_url = bool(url and url.strip())
     has_img = bool(actual_image is not None and getattr(actual_image, 'filename', None))
     has_vid = bool(video is not None and getattr(video, 'filename', None))
@@ -436,9 +460,10 @@ async def verify_multimodal(
         engine = get_fusion_engine()
         result = engine.verify_content(
             text=text,
-            title=title,
+            title=final_title,
             url=url,
             author=author,
+            model_type=model_type or "transformer",
             image_input=pil_image,
             video_path=temp_video_path,
             retrieve_evidence=True
@@ -451,7 +476,7 @@ async def verify_multimodal(
                 pass
 
     verif_id = await _persist_verification({
-        "title": title or "Multimodal Verification Submission",
+        "title": final_title or "Multimodal Verification Submission",
         "text_snippet": (text[:300] if text else "Multimodal Media Analysis"),
         "source_url": url,
         **result
@@ -464,6 +489,8 @@ async def verify_multimodal(
         "source": result.get("source_credibility")
     }
 
+    evidence_items = result.get("evidence_retrieval", {}).get("evidence_list") if isinstance(result.get("evidence_retrieval"), dict) else None
+
     return VerificationResponse(
         id=verif_id,
         prediction=result["prediction"],
@@ -471,7 +498,7 @@ async def verify_multimodal(
         calibrated_confidence=result.get("calibrated_confidence", result["confidence"]),
         probabilities=result["probabilities"],
         modalities_analyzed=result["modalities_analyzed"],
-        title=title,
+        title=final_title,
         text_snippet=text[:300] if text else None,
         source_url=url,
         text_analysis=result.get("text_analysis"),
@@ -479,6 +506,7 @@ async def verify_multimodal(
         video_forensics=result.get("video_forensics"),
         source_credibility=result.get("source_credibility"),
         evidence_retrieval=result.get("evidence_retrieval"),
+        evidence=evidence_items,
         cross_modal_consistency=result.get("cross_modal_consistency"),
         modality_breakdown=modality_breakdown,
         modality_weights=result.get("modality_weights"),

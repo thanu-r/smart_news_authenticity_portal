@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = async (email, password) => {
-    const res = await authAPI.login({ email, password });
+    const res = await authAPI.login({ username_or_email: email, email, password });
     const { access_token, user: userData } = res.data;
     localStorage.setItem('smartnews_token', access_token);
     setToken(access_token);

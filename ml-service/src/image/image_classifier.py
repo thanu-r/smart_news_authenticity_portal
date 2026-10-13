@@ -90,7 +90,7 @@ class ImageForensicClassifier:
 
         prob_dict = {
             "real": norm_real,
-            "fake": norm_tampered,
+            "fake": round(min(1.0, norm_tampered + norm_ai), 4),
             "tampered": norm_tampered,
             "ai_generated": norm_ai,
             "suspicious": norm_susp
@@ -110,18 +110,18 @@ class ImageForensicClassifier:
             anomalies.append(f"Editing software signature found in metadata ({meta.get('software_name')}).")
 
         # 5. Final Calibrated Decision
-        if norm_ai >= 0.50 and ai_prob >= 0.50 and ai_prob > casia_fake:
+        if norm_ai >= 0.48 or ai_result["is_ai_generated"] or (ai_prob >= 0.50 and ai_prob > casia_fake):
             final_pred = "AI_GENERATED"
-            confidence = norm_ai
+            confidence = max(norm_ai, ai_prob)
             explanation = (
                 "The AI-media detector identified patterns associated with synthetically generated imagery: " +
                 ("; ".join(ai_reasons[:2]) if ai_reasons else "anomalous high-frequency Fourier spectral decay and demosaicing absence.")
             )
-        elif norm_tampered >= 0.55:
+        elif norm_tampered >= 0.52:
             final_pred = "FAKE_TAMPERED"
             confidence = norm_tampered
             explanation = f"Detected visual manipulation signals: {'; '.join(anomalies) if anomalies else 'significant forensic feature anomalies'}."
-        elif norm_real >= 0.55:
+        elif norm_real >= 0.55 and not ai_result["is_ai_generated"] and ai_prob < 0.40:
             final_pred = "REAL"
             confidence = norm_real
             explanation = "Image exhibits consistent compression levels, natural optical noise distribution, and no splicing or AI generation artifacts."

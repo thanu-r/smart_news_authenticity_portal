@@ -51,14 +51,14 @@ export default function Footer() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
               <Cpu size={14} color="var(--primary)" />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Text: <span style={{ color: 'var(--real-color)', fontWeight: 600 }}>BERT-Tiny Calibrated</span>
+                Text: <span style={{ color: 'var(--real-color)', fontWeight: 600 }}>{modelStatus?.text_model || 'BERT-Tiny Calibrated'}</span>
               </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
               <Activity size={14} color="#ec4899" />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Vision: <span style={{ color: 'var(--real-color)', fontWeight: 600 }}>CASIA2 ELA Extractor</span>
+                Vision: <span style={{ color: 'var(--real-color)', fontWeight: 600 }}>{modelStatus?.image_model || 'CASIA2 ELA Extractor'}</span>
               </span>
             </div>
 

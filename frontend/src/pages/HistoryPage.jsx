@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { History, ThumbsUp, ThumbsDown, Filter, Calendar, Layers, CheckCircle2, Search, Loader2 } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { History, ThumbsUp, ThumbsDown, Calendar, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { historyAPI } from '../services/api';
 import DecisionBadge from '../components/DecisionBadge';
 
@@ -10,7 +10,7 @@ export default function HistoryPage() {
   const [feedbackSuccess, setFeedbackSuccess] = useState({});
   const [error, setError] = useState(null);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -54,11 +54,11 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedModality]);
 
   useEffect(() => {
     fetchHistory();
-  }, [selectedModality]);
+  }, [fetchHistory]);
 
   const handleFeedback = async (id, isCorrect) => {
     try {
@@ -97,6 +97,13 @@ export default function HistoryPage() {
           Inspect past authenticity determinations, review driver signals, and submit human-in-the-loop accuracy feedback.
         </p>
       </div>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'var(--fake-bg)', border: '1px solid var(--fake-glow)', borderRadius: '8px', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '20px' }}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="glass-panel" style={{ padding: '14px 20px', marginBottom: '24px', display: 'flex', gap: '10px', overflowX: 'auto' }}>

@@ -52,6 +52,7 @@ class MultimodalDecisionFusionEngine:
         title: Optional[str] = None,
         url: Optional[str] = None,
         author: Optional[str] = None,
+        model_type: str = "transformer",
         image_input: Optional[Union[str, Path, Image.Image]] = None,
         video_path: Optional[str] = None,
         retrieve_evidence: bool = True
@@ -70,7 +71,7 @@ class MultimodalDecisionFusionEngine:
         text_result = None
         has_text = bool(text and len(text.strip()) > 10) or bool(title and len(title.strip()) > 5)
         if has_text:
-            text_result = self.text_classifier.predict_single(text=text or "", title=title)
+            text_result = self.text_classifier.predict_single(text=text or "", title=title, model_type=model_type)
             modalities_present.append("text")
             p_fake = text_result["probabilities"]["fake"]
             p_real = text_result["probabilities"]["real"]
@@ -83,7 +84,9 @@ class MultimodalDecisionFusionEngine:
         if image_input is not None:
             image_result = self.image_classifier.predict_image(image_input)
             modalities_present.append("image")
-            p_fake = float(image_result["probabilities"].get("fake", 0.5))
+            p_ai = float(image_result["probabilities"].get("ai_generated", 0.0))
+            p_tampered = float(image_result["probabilities"].get("tampered", 0.0))
+            p_fake = float(image_result["probabilities"].get("fake", p_tampered + p_ai))
             p_real = float(image_result["probabilities"].get("real", 0.5))
             p_susp = float(image_result["probabilities"].get("suspicious", 0.0))
             if image_result.get("prediction") == "SUSPICIOUS" and p_susp == 0.0:
@@ -268,12 +271,19 @@ class MultimodalDecisionFusionEngine:
         if text_result and image_result:
             t_pred = text_result["prediction"]
             i_pred = image_result["prediction"]
-            if t_pred == "REAL" and i_pred == "FAKE":
+            if t_pred == "REAL" and i_pred in ["FAKE", "AI_GENERATED", "FAKE_TAMPERED", "TAMPERED"]:
                 has_cross_modal_conflict = True
-                conflict_note = "Text content appears authentic, but accompanying image exhibits digital tampering/splicing."
+                conflict_note = f"Text content appears authentic, but accompanying imagery exhibits {'synthetic AI generative patterns' if i_pred == 'AI_GENERATED' else 'digital tampering/splicing artifacts'}."
             elif t_pred == "FAKE" and i_pred == "REAL":
                 has_cross_modal_conflict = True
                 conflict_note = "Accompanying image appears authentic, but text content exhibits disinformation markers."
+
+        if text_result and video_result:
+            t_pred = text_result["prediction"]
+            v_pred = video_result["prediction"]
+            if t_pred == "REAL" and v_pred in ["FAKE", "DEEPFAKE", "FAKE_MANIPULATED", "AI_GENERATED"]:
+                has_cross_modal_conflict = True
+                conflict_note = f"Text content appears authentic, but accompanying video exhibits {'deepfake facial manipulation' if v_pred == 'DEEPFAKE' else 'generative/temporal anomalies'}."
 
         # Make Final Prediction
         labels = ["fake", "real", "suspicious"]
