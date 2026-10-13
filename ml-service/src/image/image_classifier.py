@@ -81,7 +81,7 @@ class ImageForensicClassifier:
         casia_susp = float(prob_dict_raw.get("suspicious", 0.0))
 
         # 2. AI-Generated Image Forensics (2D FFT, demosaicing, noise moments, provenance)
-        ai_result = self.ai_detector.predict_ai_generated(img)
+        ai_result = self.ai_detector.predict_ai_generated(img, is_video_frame=is_video_frame)
         ai_prob = float(ai_result["ai_probability"])
         ai_reasons = ai_result["reasons"]
         ai_signals = ai_result["forensic_signals"]

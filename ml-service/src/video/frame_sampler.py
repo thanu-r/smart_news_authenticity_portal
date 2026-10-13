@@ -5,11 +5,14 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from .video_metadata_parser import inspect_video_container_metadata
+
 class VideoFrameSampler:
     """
     Decodes video files across MP4, MOV, AVI, WEBM, and MKV containers.
     Extracts keyframes at a configurable rate, tracks facial continuity across frames,
-    and isolates face-specific temporal jitter from natural scene motion.
+    measures optical flow affine warp residuals (detecting generative morphing),
+    and computes temporal sensor pattern noise (PRNU) correlation.
     """
     def __init__(self, target_fps: float = 2.0, max_frames: int = 30):
         self.target_fps = target_fps
@@ -31,15 +34,58 @@ class VideoFrameSampler:
                 return (min_x, min_y, w, h)
         return None
 
+    def _compute_motion_and_prnu(self, gray_curr: np.ndarray, gray_prev: np.ndarray) -> Tuple[float, float]:
+        """
+        Compute:
+          1. Optical flow affine warp residual (high for non-rigid diffusion morphing).
+          2. Temporal sensor pattern noise (PRNU) correlation (high for physical camera sensors).
+        """
+        # 1. Optical flow warp residual
+        warp_residual = 0.0
+        try:
+            flow = cv2.calcOpticalFlowFarneback(gray_prev, gray_curr, None, 0.5, 2, 12, 2, 5, 1.2, 0)
+            u = flow[:, :, 0]
+            v = flow[:, :, 1]
+            h, w = gray_curr.shape
+            y, x = np.mgrid[:h, :w]
+            A = np.column_stack([x.ravel(), y.ravel(), np.ones(h * w)])
+            pu, _, _, _ = np.linalg.lstsq(A, u.ravel(), rcond=None)
+            pv, _, _, _ = np.linalg.lstsq(A, v.ravel(), rcond=None)
+            u_pred = A @ pu
+            v_pred = A @ pv
+            warp_residual = float(np.mean((u.ravel() - u_pred) ** 2 + (v.ravel() - v_pred) ** 2))
+        except Exception:
+            warp_residual = 0.0
+
+        # 2. Temporal noise correlation (sensor PRNU fingerprint)
+        noise_corr = 0.0
+        try:
+            blur1 = cv2.blur(gray_prev.astype(np.float32), (3, 3))
+            blur2 = cv2.blur(gray_curr.astype(np.float32), (3, 3))
+            n1 = gray_prev.astype(np.float32) - blur1
+            n2 = gray_curr.astype(np.float32) - blur2
+            n1_zero = n1 - np.mean(n1)
+            n2_zero = n2 - np.mean(n2)
+            denom = (np.std(n1_zero) * np.std(n2_zero)) + 1e-8
+            noise_corr = float(np.mean(n1_zero * n2_zero) / denom)
+        except Exception:
+            noise_corr = 0.0
+
+        return warp_residual, noise_corr
+
     def sample_frames(self, video_path: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Sample frames from a video file and compute motion-compensated temporal discontinuity metrics.
         Returns:
           frames: List of dicts containing frame_index, timestamp, PIL image, face_detected, face_boxes, temporal_diff, face_jitter
-          video_meta: Dict containing duration_seconds, total_frames, fps, resolution, frames_sampled, mean_flicker, face_ratio_var
+          video_meta: Dict containing duration_seconds, total_frames, fps, resolution, frames_sampled, mean_flicker, face_ratio_var,
+                      mean_warp_residual, mean_temporal_prnu_corr, container_analysis
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
+
+        # Container metadata check
+        container_info = inspect_video_container_metadata(video_path)
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -57,9 +103,11 @@ class VideoFrameSampler:
         frame_interval = max(1, int(orig_fps / self.target_fps))
         
         frames = []
-        prev_raw = None
+        prev_small_gray = None
         consecutive_diffs = []
         consecutive_ratios = []
+        warp_residuals = []
+        noise_correlations = []
         current_frame_idx = 0
 
         while cap.isOpened() and len(frames) < self.max_frames:
@@ -67,20 +115,32 @@ class VideoFrameSampler:
             if not ret:
                 break
 
+            # Fast downsampled analysis frame (256x256) for motion and noise metrics
+            small_bgr = cv2.resize(frame, (256, 256), interpolation=cv2.INTER_AREA)
+            small_gray = cv2.cvtColor(small_bgr, cv2.COLOR_BGR2GRAY)
+
             # Consecutive frame motion analysis (independent of sampling skip)
-            if prev_raw is not None:
-                diff_consec = np.mean(np.abs(frame.astype(float) - prev_raw.astype(float)), axis=2)
+            if prev_small_gray is not None:
+                # 1. Fast C++ absdiff for flicker
+                diff_consec = cv2.absdiff(small_gray, prev_small_gray)
                 mean_d = float(np.mean(diff_consec))
                 consecutive_diffs.append(mean_d)
 
-                r, g, b = frame[:, :, 2], frame[:, :, 1], frame[:, :, 0]
+                # 2. Skin / Face motion ratio
+                r, g, b = small_bgr[:, :, 2], small_bgr[:, :, 1], small_bgr[:, :, 0]
                 skin = (r > g) & (g > b) & ((r - g) > 10) & (r > 50) & (b < 185)
-                if np.sum(skin) > 400:
+                if np.sum(skin) > 200:
                     f_d = float(np.mean(diff_consec[skin]))
                     b_d = float(np.mean(diff_consec[~skin]))
                     consecutive_ratios.append(f_d / (b_d + 1e-3))
 
-            prev_raw = frame.copy()
+                # 3. Optical flow warp residual & PRNU noise correlation (every 2-3 frames for speed)
+                if current_frame_idx % max(1, frame_interval // 2) == 0:
+                    w_res, n_corr = self._compute_motion_and_prnu(small_gray, prev_small_gray)
+                    warp_residuals.append(w_res)
+                    noise_correlations.append(n_corr)
+
+            prev_small_gray = small_gray.copy()
 
             if current_frame_idx % frame_interval == 0:
                 timestamp = round(current_frame_idx / orig_fps, 2)
@@ -117,6 +177,8 @@ class VideoFrameSampler:
 
         mean_flicker = float(np.mean(consecutive_diffs)) if consecutive_diffs else 0.0
         face_ratio_var = float(np.var(consecutive_ratios)) if len(consecutive_ratios) >= 3 else 0.0
+        mean_warp = float(np.mean(warp_residuals)) if warp_residuals else 0.0
+        mean_noise_corr = float(np.mean(noise_correlations)) if noise_correlations else 0.0
 
         video_meta = {
             "duration_seconds": round(duration, 2),
@@ -126,7 +188,10 @@ class VideoFrameSampler:
             "frames_sampled": len(frames),
             "container_format": ext.replace(".", "").upper(),
             "mean_optical_flicker": round(mean_flicker, 2),
-            "face_motion_ratio_variance": round(face_ratio_var, 6)
+            "face_motion_ratio_variance": round(face_ratio_var, 6),
+            "mean_warp_residual": round(mean_warp, 4),
+            "mean_temporal_prnu_corr": round(mean_noise_corr, 4),
+            "container_analysis": container_info
         }
 
         return frames, video_meta

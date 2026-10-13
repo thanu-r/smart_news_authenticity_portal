@@ -272,11 +272,8 @@ def extract_image_features(image_path_or_obj, is_video_frame: bool = False) -> T
     # Standard scale for consistent spatial analysis
     img_resized = img.resize((384, 384), Image.Resampling.LANCZOS)
     
-    # 1. Multi-scale Patch ELA (bypassed on uncompressed video frames)
-    if is_video_frame:
-        ela_dict = {"ela_mean_90": 0.5, "ela_max_patch_90": 1.5, "ela_contrast_90": 0.15, "ela_mean_75": 1.0}
-    else:
-        ela_dict = compute_multi_scale_ela(img_resized)
+    # 1. Multi-scale Patch ELA
+    ela_dict = compute_multi_scale_ela(img_resized)
     
     # 2. Block Noise Inconsistency & Kurtosis
     noise_inc = compute_noise_inconsistency(img_resized)

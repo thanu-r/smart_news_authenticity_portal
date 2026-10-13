@@ -220,9 +220,9 @@ class AIImageDetector:
             "detected_generator": found_software
         }
 
-    def predict_ai_generated(self, image_input) -> Dict[str, Any]:
+    def predict_ai_generated(self, image_input, is_video_frame: bool = False) -> Dict[str, Any]:
         """
-        Evaluate an image and return:
+        Evaluate an image or decoded video frame and return:
           - is_ai_generated: bool
           - ai_probability: float in [0.0, 1.0] (calibrated probability)
           - forensic_signals: dictionary of individual forensic indicators
@@ -263,52 +263,67 @@ class AIImageDetector:
         score_components = []
 
         # (a) Spectral Power Decay (shallow decay indicates synthetic iterative synthesis)
-        if alpha < 1.62:
-            deviation = (1.62 - alpha) / 0.8
+        alpha_threshold = 1.68 if is_video_frame else 1.62
+        if alpha < alpha_threshold:
+            deviation = (alpha_threshold - alpha) / 0.8
             score_components.append(min(0.95, 0.52 + deviation * 0.45))
             reasons.append(f"Fourier power spectrum exhibits shallow decay (alpha={alpha:.2f}), characteristic of generative latent de-noising.")
-        elif alpha > 3.0:
-            score_components.append(0.65)
+        elif alpha > 2.85:
+            score_components.append(0.68)
             reasons.append(f"Anomalous spectral decay rate (alpha={alpha:.2f}) inconsistent with natural optical lenses.")
         else:
             score_components.append(0.06)
 
-        # (b) High-Frequency Energy Ratio
-        if high_ratio > 0.045:
-            score_components.append(min(0.92, 0.48 + (high_ratio - 0.045) * 6.0))
+        # (b) High-Frequency Energy Ratio (calibrated for video codec compression)
+        h_cutoff = 0.016 if is_video_frame else 0.045
+        if high_ratio > h_cutoff:
+            score_components.append(min(0.92, 0.48 + (high_ratio - h_cutoff) * 6.0))
             reasons.append(f"Elevated high-frequency spectral energy ({high_ratio:.3f}) typical of diffusion residual high-pass noise.")
         else:
             score_components.append(0.05)
 
         # (c) High-frequency angular grid spikes
-        if ang_var > 1.75 and high_ratio > 0.035:
+        ang_cutoff = 0.012 if is_video_frame else 0.035
+        if ang_var > 1.65 and high_ratio > ang_cutoff:
             score_components.append(0.78)
             reasons.append(f"Frequency domain displays periodic grid spikes (variance={ang_var:.2f}) from neural upsampling deconvolution.")
         else:
             score_components.append(0.08)
 
         # (d) Demosaicing Inconsistency: lack of physical Bayer CFA correlation
-        if d_res > 5.5 and high_ratio > 0.025:
+        if d_res > 4.5 and high_ratio > ang_cutoff:
             score_components.append(0.72)
             reasons.append("Uncorrelated chromatic cross-channel variance exceeding physical optical sensors.")
         else:
             score_components.append(0.08)
 
         # (e) Spatial hyper-smoothness (plastic/airbrushed appearance)
-        if smoothness > 0.55 and alpha < 1.75:
+        if smoothness > 0.45 and alpha < 1.85:
             score_components.append(0.75)
             reasons.append(f"Spatial texture exhibits synthetic hyper-smoothness ({int(smoothness * 100)}% smooth patches) without optical sensor photon noise.")
         else:
             score_components.append(0.06)
 
+        # (f) High-Pass Noise Excess Kurtosis (heavy-tailed synthetic diffusion latent noise)
+        kurt_thresh = 8.0 if is_video_frame else 15.0
+        if kurtosis > kurt_thresh:
+            k_score = min(0.94, 0.56 + min(0.38, (kurtosis - kurt_thresh) * 0.015))
+            score_components.append(k_score)
+            reasons.append(f"Noise residual displays heavy-tailed excess kurtosis ({kurtosis:.1f}), characteristic of synthetic diffusion generation.")
+        elif kurtosis < -0.4:
+            score_components.append(0.60)
+            reasons.append(f"Platykurtic noise distribution ({kurtosis:.2f}) inconsistent with natural optical sensor noise.")
+        else:
+            score_components.append(0.06)
+
         # Base statistical AI probability from physical/frequency evidence
-        base_ai_prob = float(np.average(score_components, weights=[2.0, 2.0, 1.2, 1.0, 1.0]))
+        base_ai_prob = float(np.average(score_components, weights=[2.0, 2.0, 1.2, 1.0, 1.0, 2.0]))
 
         # Moderation if genuine physical camera hardware EXIF is verified
         if meta.get("has_camera_hardware") and not meta.get("has_ai_metadata"):
             base_ai_prob = base_ai_prob * 0.35
 
-        # (f) Definitive metadata evidence
+        # (g) Definitive metadata evidence
         if meta.get("has_ai_metadata"):
             base_ai_prob = max(0.94, base_ai_prob + 0.45)
             reasons.extend(meta.get("ai_markers_found", []))

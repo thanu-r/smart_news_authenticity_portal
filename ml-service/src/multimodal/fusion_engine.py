@@ -235,6 +235,7 @@ class MultimodalDecisionFusionEngine:
 
             explanation = {
                 "summary": video_result["explanation"],
+                "executive_summary": video_result["explanation"],
                 "detailed_reasons": [video_result["explanation"]] + [
                     f"Timestamp {s['timestamp']}s: {'; '.join(s.get('reasons', []))}" for s in susp_times[:3]
                 ],
